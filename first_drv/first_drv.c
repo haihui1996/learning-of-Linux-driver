@@ -8,7 +8,7 @@
 #include <asm/io.h>
 #include <asm/arch/regs-gpio.h>
 #include <asm/hardware.h>
-
+ 
 static struct class *firstdrv_class;
 static struct class_device	*firstdrv_class_dev;
 
