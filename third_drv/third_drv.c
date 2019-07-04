@@ -63,3 +63,45 @@ static irqreturn_t button_irq(int irq, void *dev_id)
     
     return IRQ_REPLAY(IRQ_HANDLED);
 }
+
+static int third_drv_open(struct inode *inode, struct file *file)
+{
+    request_irq(IRQ_EINT8, buttons_irq, IRQT_BOTHEDGE, "K1", &pins_desc[0]);
+    request_irq(IRQ_EINT11, buttons_irq, IRQ_BOTHEDGE, "K2", &pins_desc[1]);
+    request_irq(IRQ_EINT13, buttons_irq, IRQ_BOTHEDGE, "K3", &pins_desc[2]);
+    request_irq(IRQ_EINT14, buttons_irq, IRQ_BOTHEDGE, "K4", &pins_desc[3]);
+    return 0；
+}
+
+ssize_t third_drv_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
+{
+    if (size != 1)
+    {
+        return -EINVAL;
+    }
+    /* 如果按键没有动作，休眠 */
+    wait_event_interruptible(button_waitq, evpress);
+
+    /* 如果案件有动作，返回按键值 */
+    copy_to_user(buf, &key_val, 1);
+    ev_press = 0;
+
+    return 1;    
+}
+
+int third_drv_close(sturct inode *inode, struct file *file)
+{
+    free_irq(IRQ_EINT8, &pins_desc[0]);
+    free_irq(IRQ_EINT11, &pins_desc[1]);
+    free_irq(IRQ_EINT13, &pins_desc[2]);
+    free_irq(IRQ_EINT14, &pins_desc[3]);
+    return 0;
+}
+
+static sturct file_operations third_drv_fops = {
+    .owner = THIS_MODULE,
+    .open = third_drv_open,
+    .read = third_drv_read,
+    .release = third_drv_close,
+};
+
