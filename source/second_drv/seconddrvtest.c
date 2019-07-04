@@ -9,9 +9,7 @@
 int main(int argc, char **argv)
 {
 	int fd;
-	unsigned char key_vals[4];
-	int cnt = 0;
-	
+	unsigned char key_vals[4];%
 	fd = open("/dev/buttons", O_RDWR);
 	if (fd < 0)
 	{
