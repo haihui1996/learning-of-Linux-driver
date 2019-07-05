@@ -40,7 +40,7 @@ struct pin_desc pins_desc[4] = {
 /**
  * 确定按键值
  */
-static irqreturn_t button_irq(int irq, void *dev_id)
+static irqreturn_t buttons_irq(int irq, void *dev_id)
 {
     struct pin_desc * pindesc = (struct pin_desc *)dev_id;
     unsigned int pinval;
@@ -80,7 +80,7 @@ ssize_t third_drv_read(struct file *file, char __user *buf, size_t size, loff_t 
         return -EINVAL;
     }
     /* 如果按键没有动作，休眠 */
-    wait_event_interruptible(button_waitq, evpress);
+    wait_event_interruptible(button_waitq, ev_press);
 
     /* 如果案件有动作，返回按键值 */
     copy_to_user(buf, &key_val, 1);
@@ -105,3 +105,26 @@ static sturct file_operations third_drv_fops = {
     .release = third_drv_close,
 };
 
+int major;
+static int third_drv_init(void)
+{
+    major = register_chrdev(0, "third_drv", &third_drv_fops);
+    thirddrv_class = class_create(THIS_MODULE, "third_drv");
+    thirddrv_class_dev = class_device_create(thirddrv_class, NULL, MKDEV(major,0), NULL, "buttons");
+
+    return 0;
+}
+
+static void third_drv_exit(void)
+{
+    unregister_chrdev(major, "third_drv");
+    class_device_unregister(thirddrv_class_dev);
+    class_destroy(thirddrv_class);
+
+    return 0;
+}
+
+module_init(third_drv_init);
+module_exit(third_drv_exit);
+
+MODULE_LICENSE("GPL");
