@@ -1,4 +1,5 @@
 #include <linux/module.h>
+#include <linux/device.h>
 #include <linux/kernel.h>
 #include <linux/fs.h>
 #include <linux/init.h>
@@ -6,11 +7,11 @@
 #include <asm/uaccess.h>
 #include <asm/irq.h>
 #include <asm/io.h>
-#include <asm/arch/regs-gpio.h>
-#include <asm/hardware.h>
+#include <mach/regs-gpio.h>
+#include <mach/hardware.h>
  
 static struct class *firstdrv_class;
-static struct class_device	*firstdrv_class_dev;
+static struct device	*firstdrv_class_dev;
 
 volatile unsigned long *gpbcon = NULL;
 volatile unsigned long *gpbdat = NULL;
@@ -64,7 +65,7 @@ static int first_drv_init(void)
 
 	firstdrv_class = class_create(THIS_MODULE, "firstdrv");
 
-	firstdrv_class_dev = class_device_create(firstdrv_class, NULL, MKDEV(major, 0), NULL, "xyz"); /* /dev/xyz */
+	firstdrv_class_dev = device_create(firstdrv_class, NULL, MKDEV(major, 0), NULL, "xyz"); /* /dev/xyz */
 
 	gpbcon = (volatile unsigned long *)ioremap(0x56000010, 16);
 	gpbdat = gpbcon + 1;
@@ -76,7 +77,7 @@ static void first_drv_exit(void)
 {
 	unregister_chrdev(major, "first_drv"); // п╤ть
 
-	class_device_unregister(firstdrv_class_dev);
+	device_unregister(firstdrv_class_dev);
 	class_destroy(firstdrv_class);
 	iounmap(gpbcon);
 }
