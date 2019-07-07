@@ -1,16 +1,17 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <asm/uaccess.h>
 #include <asm/irq.h>
 #include <asm/io.h>
-#include <asm/arch/reg-gpio.h>
-#include <asm/hardware.h>
+#include <mach/regs-gpio.h>
+#include <mach/hardware.h>
 
 static struct class *seconddrv_class;
-static struct class_device *seconddrv_class_dev;
+static struct device *seconddrv_class_dev;
 
 volatile unsigned long *gpgcon;
 volatile unsigned long *gpgdat;
@@ -57,7 +58,7 @@ static int second_drv_init(void)
 {
     major = register_chrdev(0, "second_drv", &second_drv_fops);
     seconddrv_class = class_create(THIS_MODULE, "second_drv");
-    seconddrv_class_dev = class_device_create(seconddrv_class, NULL, MKDEV(major, 0), NULL,"buttons"); /* /dev/bottons */
+    seconddrv_class_dev = device_create(seconddrv_class, NULL, MKDEV(major, 0), NULL,"buttons"); /* /dev/bottons */
     gpgcon = (volatile unsigned long*)ioremap(0x56000060, 16);
     gpgdat = gpgcon + 1;
     return 0;
@@ -66,9 +67,8 @@ static int second_drv_init(void)
 static void second_drv_exit(void)
 {
     unregister_chrdev(major, "second_drv");
-    class_device_unregister(seconddrv_class_dev);
+    device_unregister(seconddrv_class_dev);
     class_destroy(seconddrv_class);
-    return 0;
 }
 
 module_init(second_drv_init);
