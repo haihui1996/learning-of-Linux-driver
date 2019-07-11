@@ -65,16 +65,20 @@ static irqreturn_t buttons_irq(int irq, void *dev_id)
     ev_press = 1; /* 表示发生了中断 */
     wake_up_interruptible(&button_waitq); /* 唤醒休眠的进程 */
     
-    return IRQ_REPLAY(IRQ_HANDLED);
+    /*
+    IRQ_REPLAY：被禁止的中断号上又产生了中断，这个中断是不会被处理的，
+    当这个中断号被允许产生中断时，会将这个未被处理的中断转为IRQ_REPLAY。
+     */
+    return IRQ_REPLAY;
 }
 
 static int third_drv_open(struct inode *inode, struct file *file)
 {
     /* 申请中断号，并设置为双边沿触发 */
-    request_irq(IRQ_EINT8, buttons_irq, IRQT_BOTHEDGE, "K1", &pins_desc[0]);
-    request_irq(IRQ_EINT11, buttons_irq, IRQT_BOTHEDGE, "K2", &pins_desc[1]);
-    request_irq(IRQ_EINT13, buttons_irq, IRQT_BOTHEDGE, "K3", &pins_desc[2]);
-    request_irq(IRQ_EINT14, buttons_irq, IRQT_BOTHEDGE, "K4", &pins_desc[3]);
+    request_irq(IRQ_EINT8, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "K1", &pins_desc[0]);
+    request_irq(IRQ_EINT11, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "K2", &pins_desc[1]);
+    request_irq(IRQ_EINT13, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "K3", &pins_desc[2]);
+    request_irq(IRQ_EINT14, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "K4", &pins_desc[3]);
     return 0;
 }
 
