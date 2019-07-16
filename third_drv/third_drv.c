@@ -69,7 +69,7 @@ static irqreturn_t buttons_irq(int irq, void *dev_id)
     IRQ_REPLAY：被禁止的中断号上又产生了中断，这个中断是不会被处理的，
     当这个中断号被允许产生中断时，会将这个未被处理的中断转为IRQ_REPLAY。
      */
-    return IRQ_REPLAY;
+    return IRQ_HANDLED;
 }
 
 static int third_drv_open(struct inode *inode, struct file *file)
