@@ -65,5 +65,5 @@ static irqreturn_t buttons_irq(int irq, void * dev_id)
 
 static int forth_drv_open(struct inode *inode, struct file * file)
 {
-    request_irq(INQ)
+    request_irq(IRQ_EINT8, buttons_irq, 
 }
