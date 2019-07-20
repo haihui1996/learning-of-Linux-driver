@@ -1,12 +1,24 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/device.h>
 #include <linux/fs.h>
-
+#include <linux/init.h>
+#include <linux/delay.h>
+#include <linux/irq.h>
+#include <linux/uaccess.h>
+#include <asm/irq.h>
+#include <asm/io.h>
+#include <mach/regs-gpio.h>
+#include <mach/hardware.h>
+#include <linux/interrupt.h>
+#include <mach/gpio-fns.h>
+#include <linux/sched.h>
+#include <linux/poll.h>
 
 
 
 static struct class *forthdrv_class;
-static struct class_device *forthdrv_class_device;
+static struct device *forthdrv_class_device;
 
 
 // volatile unsigned long *gpfcon
@@ -31,10 +43,10 @@ static unsigned char key_val;
  * k1,k2,k3,k4∂‘”¶GPG0,GPG3,GPG5,GPG6
  */
 struct pin_desc pins_desc[4] = {
-    {S3C2410_GPG0, 0x01},
-	{S3C2410_GPG3, 0x02},
-	{S3C2410_GPG5, 0x03},
-	{S3C2410_GPG6, 0x04},
+    {S3C2410_GPG0_EINT8, 0x01},
+    {S3C2410_GPG3_EINT11, 0x02},
+    {S3C2410_GPG5_EINT13, 0x03},
+    {S3C2410_GPG6_EINT14, 0x04},
 };
 
 /**
@@ -65,10 +77,10 @@ static irqreturn_t buttons_irq(int irq, void * dev_id)
 
 static int forth_drv_open(struct inode *inode, struct file * file)
 {
-    request_irq(IRQ_EINT8, buttons_irq, IRQT_BOTHEDGE, "k1", &pins_desc[0]);
-    request_irq(IRQ_EINT11, buttons_irq, IRQT_BOTHEDGE, "k2", &pins_desc[0]);
-    request_irq(IRQ_EINT13, buttons_irq, IRQT_BOTHEDGE, "k3", &pins_desc[0]);
-    request_irq(IRQ_EINT14, buttons_irq, IRQT_BOTHEDGE, "k4", &pins_desc[0]);
+    request_irq(IRQ_EINT8, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k1", &pins_desc[0]);
+    request_irq(IRQ_EINT11, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k2", &pins_desc[0]);
+    request_irq(IRQ_EINT13, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k3", &pins_desc[0]);
+    request_irq(IRQ_EINT14, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k4", &pins_desc[0]);
     return 0;
 }
 
@@ -126,8 +138,8 @@ static int forth_drv_init(void)
 static void forth_drv_exit(void)
 {
     unregister_chrdev(major, "forth_drv");
-    device_unregister(forthdrv_class_dev);
-    class_desrtoy(forthdrv_class);
+    device_unregister(forthdrv_class_device);
+    class_destroy(forthdrv_class);
     return 0;
 }
 
