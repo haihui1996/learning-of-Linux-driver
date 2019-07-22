@@ -15,7 +15,9 @@
 #include <linux/sched.h>
 #include <linux/poll.h>
 
-
+/**
+ * poll 机制
+ */
 
 static struct class *forthdrv_class;
 static struct device *forthdrv_class_device;
@@ -77,6 +79,7 @@ static irqreturn_t buttons_irq(int irq, void * dev_id)
 
 static int forth_drv_open(struct inode *inode, struct file * file)
 {
+    /* 注册中断服务 */
     request_irq(IRQ_EINT8, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k1", &pins_desc[0]);
     request_irq(IRQ_EINT11, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k2", &pins_desc[0]);
     request_irq(IRQ_EINT13, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k3", &pins_desc[0]);

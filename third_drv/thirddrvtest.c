@@ -20,7 +20,7 @@ int main(int argc, char const *argv[])
 
     while ( 1 )
     {
-        read(fd, &key_val, 1);
+        read(fd, &key_val, 1); // read函数会一直阻塞等待，之后读取到数据才会返回，进而才会进行后面的print
         printf("key_val = 0x%x\n", key_val);
     }
     
