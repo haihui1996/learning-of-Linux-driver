@@ -1,0 +1,362 @@
+fasync的总结
+	我们知道，驱动程序运行在内核空间中，应用程序运行在用户空间中，两者是不能直接通信的。
+但在实际应用中，在设备已经准备好的时候，我们希望通知用户程序设备已经ok，用户程序可以读取
+了，这样应用程序就不需要一直查询该设备 的状态，从而节约了资源，这就是异步通知。
+
+相关函数原型：
+
+int fasync_helper(struct inode *inode, struct file *filp, int mode, struct fasync_struct **fa);
+作用：一个"帮忙者", 来实现 fasync 设备方法. 
+	fasync_helper 被调用来从相关的进程列表中添加或去除入口项, 当 FASYNC 标志因一个打开文件而改变。 
+它的所有参数除了最后一个, 都被提供给 fasync 方法并且被直接传递. 当数据到达时 kill_fasync被用来通知
+相关的进程. 它的参数是被传递的信号(常常是 SIGIO)和 band 。
+
+参数：
+mode  ：参数是传递给方法的相同的值, 
+fa    ： 指针指向一个设备特定的 fasync_struct *
+
+
+void kill_fasync(struct fasync_struct *fa, int sig, int band);
+如果这个驱动支持异步通知, 这个函数可用来发送一个信号到登记在 fa 中的进程.
+
+
+
+
+
+--------------------------------------------------------------
+fasync这个东西就是为了使驱动的读写和application的读写分开，使得application可以在驱动读写时去做别的事，
+通过kill_fasync(kill_fasync(&async, SIGIO, POLL_IN);)发SIGIO信号给应用，应用通过fcntl把自己这个SIGIO的
+信号换成自己的响应函数，当驱动发(kill_fasync(&async, SIGIO, POLL_IN);)给应用时,应用就调用了自己的handler去处理。
+fasync_helper作用就是初始化fasync这个东西，包括分配内存和设置属性。
+
+！！！最后记得在驱动的release里把fasync_helper初始化的东西free掉。！！！
+
+
+
+
+
+具体实现：
+一 驱动方面：
+1. 在设备抽象的数据结构中增加一个struct fasync_struct的指针
+2. 实现设备操作中的fasync函数，这个函数很简单，其主体就是调用内核的fasync_helper函数。
+3. 在需要向用户空间通知的地方(例如中断中)调用内核的kill_fasync函数。
+4. 在驱动的release方法中调用kpp_fasync(-1, filp, 0);函数
+
+
+二 应用层方面
+其实就三个步骤：
+
+1）signal(SIGIO, sig_handler);
+调用signal函数，让指定的信号SIGIO与处理函数sig_handler对应。
+
+2）fcntl(fd, F_SET_OWNER, getpid());
+指定一个进程作为文件的“属主(filp->owner)”，这样内核才知道信号要发给哪个进程。
+
+3）设置文件标志，添加FASYNC标志
+f_flags = fcntl(fd, F_GETFL);
+fcntl(fd, F_SETFL, f_flags | FASYNC);
+
+在设备文件中添加 FASYNC 标志，驱动中就会调用将要实现的 test_fasync 函数。
+三个步骤执行后，一旦有信号产生，相应的进程就会收到。
+完成了以上的工作的话，当内核执行到kill_fasync函数，用户空间SIGIO函数的处理函数就会被调用了。
+
+
+
+
+POLL_IN POLL_OUT
+=================================================================================
+驱动程序向用户程序发信号
+--------------------------------------------- 
+当设备有IO事件发生，就有机制保证向应用进程发送信号，显然设备驱动程序扮演重要角色，实际终端tty、
+网络socket等的标准实现已经包括了实时信号驱动的支持，所以，在Linux中它们可以如上直接使用。但有些
+设备的驱动程序还并没有支持，所以需要定制设备驱动程序。以下两个API应该是可以屏蔽所有相关琐碎操作
+(类似send_sig())的标准接口:
+int fasync_helper(int fd, struct file *filp, int mode, struct fasync_struct **fa);      
+void kill_fasync(struct fasync_struct **fa, int sig, int band);
+
+如果需要支持异步通知机制，如下设备结构中需要有异步事件通知队列(它应该与睡眠队列类似)，并且增加fasync()接口的实现(该函数将本进程登记到 async_queue 上去)。 
+当一个打开的文件 FASYNC 标志变化时(调用fcntl()函数，设置FASYNC文件标志时)，fasync()接口将被调用。 
+
+struct kpp_dev {
+    struct cdev cdev;
+    struct fasync_struct *async_queue;
+};
+
+static int kpp_fasync(int fd, struct file *filp, int mode)
+{
+    struct kpp_dev *dev = filp->private_data; 
+    return fasync_helper(fd, filp, mode, &dev->async_queue);
+}
+
+事件发生的时机，就是中断服务程序或相应的软中断中调用kill_fasync():
+if (dev->async_queue)
+    kill_fasync(&dev->async_queue, SIGIO, POLL_IN);
+如果是写操作，就是POLL_OUT。注意，无论用户进程设定了什么期望的信号，在这个环节，发送的一般就是SIGIO。注意在设备文件关闭(release方法)时，注意执行fasync()，使得本文件的操作从上述的设备异步事件等待链表中剥离。
+
+static int kpp_release(struct inode *inode, struct file *filp)
+{
+    kpp_fasync(-1, filp, 0);
+    return 0;
+}
+
+
+
+----------------------------------------
+
+异步通知 fasync 方法
+应用程序必须：
+ 1.指定一个进程作为文件的属主，使用fcntl执行F_SETOWN，属主的进程ID号就保存在filp->f_owner中
+ 2. 设置FASYNC / O_ASYNC 标志，通过fcntl的F_SETFL完成。
+然后输入文件就可以在数据到达时发送SIGIO信号，信号发送给filp->f_owner中的进程。
+
+驱动程序中：
+1. 设备结构体中加入 struct fasync_struct *async_queue;
+2. 驱动方法fasync中调用fasync_helper()
+   static int XXX_fasync(int fd, struct file *filp, int mode)
+   {
+         struct mem_dev *dev_p = filp->private_data;
+         return fasync_helper(fd, filp, mode, &dev_p->async_queue);
+   }
+3. 当数据到达时调用kill_fasync()发送信号 （如在write中）
+   if (dev_p->async_queue)
+   {
+        kill_fasync(&dev_p->async_queue, SIGIO, POLL_IN);
+   }
+4. 文件关闭时，release方法中调用fasync方法，从活动的异步读取进程列中删除该文件。
+    XXX_fasync(-1, filp, 0);
+
+例子：
+驱动：
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/types.h>
+#include <linux/errno.h>
+#include <linux/fs.h>
+#include <linux/mm.h>
+#include <linux/sched.h>
+#include <linux/cdev.h>
+#include <asm/system.h>
+#include <asm/uaccess.h>
+#include <asm/io.h>
+#include <linux/slab.h>
+#include <linux/device.h>
+#define MEM_SIZE 256
+#define MEM_NAME "mem"
+struct mem_dev
+{
+    struct cdev dev;
+    char mem[MEM_SIZE];
+    struct fasync_struct *async_queue;
+};
+static struct mem_dev *mem_dev_p;
+static dev_t mem_devno;
+static struct class *mem_class;
+
+
+static ssize_t mem_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
+{
+    struct mem_dev *dev_p = filp->private_data;
+    if (count > MEM_SIZE)
+        count = MEM_SIZE;
+    if (copy_to_user(buf, dev_p->mem, count))
+    {
+        return -EFAULT;
+    }
+
+    return count;
+}
+
+
+static ssize_t mem_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos)
+{
+    struct mem_dev *dev_p = filp->private_data;
+
+    if (count > MEM_SIZE)
+        count = MEM_SIZE;
+    if (copy_from_user(dev_p->mem, buf, count))
+    {
+        return -EFAULT;
+    }
+
+    if (dev_p->async_queue)
+    {
+        kill_fasync(&dev_p->async_queue, SIGIO, POLL_IN);
+    }
+
+    return count;
+}
+
+
+
+static int mem_fasync(int fd, struct file *filp, int mode)
+{
+    struct mem_dev *dev_p = filp->private_data;
+
+    return fasync_helper(fd, filp, mode, &dev_p->async_queue);
+}
+
+
+static int mem_open(struct inode * inode , struct file * filp)
+{
+    filp->private_data = mem_dev_p;
+    return 0;
+}
+
+
+static int mem_release(struct inode * inode, struct file *filp)
+{
+    mem_fasync(-1, filp, 0);
+    return 0;
+}
+
+
+static const struct file_operations mem_fops = 
+{
+    .owner = THIS_MODULE,
+    .open = mem_open,
+    .release = mem_release,
+    .read = mem_read,
+    .write = mem_write,
+    .fasync = mem_fasync,
+};
+
+
+static int __init my_mem_init(void)
+{
+    int ret;
+    ret = alloc_chrdev_region(&mem_devno, 0, 1, MEM_NAME);
+    if (ret)
+    {
+        goto out_1;
+    }
+
+    mem_dev_p = kmalloc(sizeof(struct mem_dev), GFP_KERNEL);
+    if (NULL == mem_dev_p)
+    {
+        ret = -ENOMEM;
+        goto out_2;
+    }
+
+    memset(mem_dev_p, 0, sizeof(struct mem_dev));
+
+    cdev_init(&mem_dev_p->dev, &mem_fops);
+    mem_dev_p->dev.owner = THIS_MODULE;
+    mem_dev_p->dev.ops = &mem_fops;
+    ret = cdev_add(&mem_dev_p->dev, mem_devno, 1);
+    if (ret)
+    {
+        goto out_3;
+    }
+
+    mem_class = class_create(THIS_MODULE, "mem_driver");
+    device_create(mem_class, NULL, mem_devno, NULL, "mem_fasync");
+
+    printk("mem_init\n");
+    return 0;
+
+out_3: kfree(mem_dev_p);
+out_2: unregister_chrdev_region(mem_devno, 1);
+out_1: return ret;
+}
+
+
+static void __exit my_mem_exit(void)
+{
+    device_destroy(mem_class, mem_devno);
+    class_destroy(mem_class);
+
+    cdev_del(&mem_dev_p->dev);
+    kfree(mem_dev_p);
+    unregister_chrdev_region(mem_devno, 1);
+
+    printk("mem_exit\n");
+}
+
+MODULE_LICENSE("Dual BSD/GPL");
+module_init(my_mem_init);
+module_exit(my_mem_exit);
+
+应用程序：
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <string.h>
+
+
+void catch_sigio(int signu)
+{
+    printf("catch signo\n");
+}
+
+
+int main(void)
+{
+  int flags;
+    if (SIG_ERR == signal(SIGIO, catch_sigio))
+    {
+        printf("signal failed\n");
+        return -1;
+    }
+
+    int fd;
+    fd = open("/dev/mem_fasync", O_RDWR);
+    if (-1 == fd)
+    {
+        perror("open");
+        return -2;
+    }
+    printf("open success\n");
+
+
+    fcntl(fd, F_SETOWN, getpid());
+    flags = fcntl(fd, F_GETFL);
+    fcntl(fd, F_SETFL, flags | O_ASYNC);
+
+
+    while (1)
+    {
+        NULL;
+    }
+    return 0;
+}
+
+
+
+比较：
+1. 上一节我们已经学习了用 poll 轮询数据，来避免不必要的休眠，但是事实上，轮询的直接负面作用就是效率低下，这样一节我们学习如何使用异步通知IO来提 高效率
+
+2. fcntl系统调用
+int fcntl(int fd, int cmd, long arg);
+fcntl的作用是改变一个已打开文件的属性，fd是要改变的文件的描述符，cmd是命令罗列如下：
+F_DUPFD, F_GETFD, F_SETFD, F_GETFL, F_SETFL, F_SETLK, F_SETLKW, F_GETLK, F_GETOWN, F_SETOWN
+本节只关心F_SETOWN（设置异步IO所有权），F_GETFL（获取文件flags），F_SETFL（设置文件flags）
+arg是要改变的属性内容
+
+3. 用户进程启用异步通知机制
+首先，设置一个进程作为一个文件的属主(owner)，这样内核就知道该把文件的信号发送给哪个进程
+fcntl(fd, F_SETOWN, getpid()); // getpid()就是当前进程咯
+然后，给文件设置FASYNC标志，以启用异步通知机制
+fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | FASYNC);
+
+4. 缺陷
+当有多个文件发送异步通知信号给一个进程时，进程无法知道是哪个文件发送的信号，这时候还是要借助poll的帮助完成IO
+
+
+5. 从驱动程序的角度考虑
+当文件的状态标志设置了FASYNC操作时，驱动程序会调用fasync的函数。
+fasync的实现相当简单
+static int scull_p_fasync(int fd, struct file *filp, int mode)
+{
+       struct scull_pipe *dev = filp->private_data;
+       return fasync_helper(fd, filp, mode, &dev->async_queue);
+}
+
+当有新的数据到达时，驱动程序应该发送一个SIGIO给用户，这个操作用kill_fasync方法完成
+if(dev->async_queue)
+         kill_fasync(&dev->async_queue, SIGIO, POLL_IN);
+
+最后，从异步通知列表中移除注册进去了的文件指针就直接调用scull_p_fasync(-1, filp, 0);

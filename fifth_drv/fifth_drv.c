@@ -36,6 +36,7 @@ static DECLARE_WAIT_QUEUE_HEAD(button_waitq);
 /* 中断事件标志，中断服务程序将它置一，fifth_drv_read将它清零 */
 static volatile int ev_press = 0;
 
+/* 异步操作结构体指针 */
 static struct fasync_struct *button_async;
 
 struct pin_desc
@@ -128,7 +129,15 @@ static unsigned fifth_drv_poll(struct file * file, poll_table * wait)
     return mask;
 }
 
-
+/**
+***************************************************************************
+*@brief:  异步通知函数
+*@param:  
+*@return: 
+*@warning: 
+*@Author      haihui.deng@longsys.com 2019/08/02
+***************************************************************************
+*/
 static int fifth_drv_fasync(int fd, struct file *filp, int on)\
 {
     printk("driver: fifth_drv_fasync\n");
