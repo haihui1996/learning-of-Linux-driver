@@ -16,9 +16,14 @@
 #include <linux/poll.h>
 
 /**
- * poll »úÖÆ
- */
-
+***************************************************************************
+*@brief:  
+*@param:  
+*@return: 
+*@warning: 
+*@Author      haihui.deng@longsys.com 2019/08/02
+***************************************************************************
+*/
 static struct class *forthdrv_class;
 static struct device *forthdrv_class_device;
 
