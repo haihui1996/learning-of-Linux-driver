@@ -24,8 +24,8 @@
 *@Author      haihui.deng@longsys.com 2019/08/02
 ***************************************************************************
 */
-static struct class *forthdrv_class;
-static struct device *forthdrv_class_device;
+static struct class *fifthdrv_class;
+static struct device *fifthdrv_class_device;
 
 
 // volatile unsigned long *gpfcon
@@ -33,7 +33,7 @@ static struct device *forthdrv_class_device;
 
 static DECLARE_WAIT_QUEUE_HEAD(button_waitq);
 
-/* 中断事件标志，中断服务程序将它置一，forth_drv_read将它清零 */
+/* 中断事件标志，中断服务程序将它置一，fifth_drv_read将它清零 */
 static volatile int ev_press = 0;
 
 static struct fasync_struct *button_async;
@@ -84,7 +84,7 @@ static irqreturn_t buttons_irq(int irq, void * dev_id)
     return IRQ_HANDLED;
 }
 
-static int forth_drv_open(struct inode *inode, struct file * file)
+static int fifth_drv_open(struct inode *inode, struct file * file)
 {
     /* 注册中断服务 */
     request_irq(IRQ_EINT8, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING, "k1", &pins_desc[0]);
@@ -94,7 +94,7 @@ static int forth_drv_open(struct inode *inode, struct file * file)
     return 0;
 }
 
-ssize_t forth_drv_read(struct file * file, char __user *buf, size_t size, loff_t *ppos)
+ssize_t fifth_drv_read(struct file * file, char __user *buf, size_t size, loff_t *ppos)
 {
     if (size != 1)
         return -EINVAL;
@@ -108,7 +108,7 @@ ssize_t forth_drv_read(struct file * file, char __user *buf, size_t size, loff_t
     return 1;
 }
 
-int forth_drv_close(struct inode * inode, struct file *file)
+int fifth_drv_close(struct inode * inode, struct file *file)
 {
     free_irq(IRQ_EINT8, &pins_desc[0]);
     free_irq(IRQ_EINT11, &pins_desc[1]);
@@ -117,7 +117,7 @@ int forth_drv_close(struct inode * inode, struct file *file)
     return 0;
 }
 
-static unsigned forth_drv_poll(struct file * file, poll_table * wait)
+static unsigned fifth_drv_poll(struct file * file, poll_table * wait)
 {
     unsigned int mask = 0;
     poll_wait(file, &button_waitq, wait);
@@ -135,32 +135,33 @@ static int fifth_drv_fasync(int fd, struct file *filp, int on)\
     return fasync_helper(fd, file, on, &button_async);
 }
 
-static struct file_operations forth_drv_fops = {
+static struct file_operations fifth_drv_fops = {
     .owner  = THIS_MODULE,
-    .open   = forth_drv_open,
-    .read   = forth_drv_read,
-    .release = forth_drv_close,
-    .poll   = forth_drv_poll,
+    .open   = fifth_drv_open,
+    .read   = fifth_drv_read,
+    .release = fifth_drv_close,
+    .poll   = fifth_drv_poll,
+    .fasync = fifth_drv_fasync,
 };
 
 int major;
-static int forth_drv_init(void)
+static int fifth_drv_init(void)
 {
-    major = register_chrdev(0, "forth_drv", &forth_drv_fops);
-    forthdrv_class = class_create(THIS_MODULE, "forth_drv");
-    forthdrv_class_device = device_create(forthdrv_class, NULL, MKDEV(major, 0), NULL, "buttons");
+    major = register_chrdev(0, "fifth_drv", &fifth_drv_fops);
+    fifthdrv_class = class_create(THIS_MODULE, "fifth_drv");
+    fifthdrv_class_device = device_create(fifthdrv_class, NULL, MKDEV(major, 0), NULL, "buttons");
     return 0;
 }
 
-static void forth_drv_exit(void)
+static void fifth_drv_exit(void)
 {
-    unregister_chrdev(major, "forth_drv");
-    device_unregister(forthdrv_class_device);
-    class_destroy(forthdrv_class);
+    unregister_chrdev(major, "fifth_drv");
+    device_unregister(fifthdrv_class_device);
+    class_destroy(fifthdrv_class);
     return 0;
 }
 
-module_init(forth_drv_init);
-module_exit(forth_drv_exit);
+module_init(fifth_drv_init);
+module_exit(fifth_drv_exit);
 
 MODULE_LICENSE("GPL");
