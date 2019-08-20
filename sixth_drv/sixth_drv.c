@@ -227,3 +227,51 @@ static  struct file_operations sixth_drv_fops ={
     .fasync = sixth_drv_fasync,
 };
 
+int major;
+/**
+***************************************************************************
+*@brief:  模块初始化函数
+*@param:  
+*@return: 
+*@warning:
+*@Author      haihui.deng@longsys.com 2019/08/04
+***************************************************************************
+*/
+static int sixth_drv_init(void)
+{
+    /* 注册字符设备，返回主设备号 */
+    major = register_chrdev(0, "sixth_drv", &sixth_drv_fops);
+
+    sixth_class = class_create(THIS_MODULE, "sixth_drv");
+
+    sixthdrv_class_dev = device_create(sixth_class, NULL, MKDEV(major, 0), NULL, "buttons");
+
+    return 0;
+}
+
+/**
+***************************************************************************
+*@brief:  模块释放函数
+*@param:  
+*@return: 
+*@warning:
+*@Author      haihui.deng@longsys.com 2019/08/04
+***************************************************************************
+*/
+static void sixth_drv_exit(void)
+{
+    unregister_chrdev (major, "sixth_drv");
+    
+    device_unregister(sixthdrv_class_dev);
+
+    class_destroy(sixth_class);
+
+    retrurn 0;
+}
+
+
+module_init(sixth_drv_init);
+
+module_exit(sixth_drv_exit);
+
+MODULE_LICENSE("GPL");
