@@ -19,6 +19,20 @@
 #include <linux/gpio.h>
 
 static struct input_dev *buttons_dev;   /* input 结构体指针 */
+struct pin_desc{
+    int irq;
+    char *name;
+    unsigned int pin;
+    unsigned int key_val;
+};
+
+struct pin_desc pins_desc[4] = {
+    {IRQ_EINT8, "K1", S3C2410_GPG0, KEY_L},
+    {IRQ_EINT8, "K2", S3C2410_GPG3, KEY_S},
+    {IRQ_EINT8, "K3", S3C2410_GPG5, KEY_ENTER},
+    {IRQ_EINT8, "K4", S3C2410_GPG6, KEY_LEFTSHIFT},
+};
+
 
 static int buttons_init(void)
 {
@@ -32,10 +46,15 @@ static int buttons_init(void)
 
     /* 2.2 能产生这类操作里的那些事件：L S ENTER LEFTSHIT */
     set_bit(KEY_L, buttons_dev->keybit);
+    set_bit(KEY_S, buttons_dev->keybit);
+    set_bit(KEY_ENTER, buttons_dev->keybit);
+    set_bit(KEY_LEFTSHIFT, buttons_dev->keybit);
 
     /* 3. 注册 */
+    input_register_device(buttons_dev);
     
     /* 4. 硬件相关操作 */
+    init_timer()
     return 0;
 }
 
