@@ -27,11 +27,72 @@ struct pin_desc{
 };
 
 struct pin_desc pins_desc[4] = {
-    {IRQ_EINT8, "K1", S3C2410_GPG0, KEY_L},
-    {IRQ_EINT8, "K2", S3C2410_GPG3, KEY_S},
-    {IRQ_EINT8, "K3", S3C2410_GPG5, KEY_ENTER},
-    {IRQ_EINT8, "K4", S3C2410_GPG6, KEY_LEFTSHIFT},
+    {S3C2410_GPG0_EINT8, "K1", S3C2410_GPG0, KEY_L},
+    {S3C2410_GPG3_EINT11, "K2", S3C2410_GPG3, KEY_S},
+    {S3C2410_GPG5_EINT13, "K3", S3C2410_GPG5, KEY_ENTER},
+    {S3C2410_GPG6_EINT14, "K4", S3C2410_GPG6, KEY_LEFTSHIFT},
 };
+
+static struct pin_desc * irq_pd;
+static struct timer_list buttons_timer; /* 用于定时消抖动 */
+
+/**
+***************************************************************************
+*@brief:  
+*@param:  
+*@return: 
+*@warning:
+*@Author      haihui.deng@longsys.com 2019/09/05
+***************************************************************************
+*/
+static irqreturn_t buttons_irq(int irq, void *dev_id)
+{
+    /* 10ms 后启动定时器 */
+    irq_pd = (struct pin_desc * )dev_id;
+    mod_timer(&buttons_timer, jiffies+ HZ / 100);
+    return IRQ_HANDLED;
+}
+
+/**
+***************************************************************************
+*@brief:  定时器中断处理函数
+*@param:  
+*@return: 
+*@warning:
+*@Author      haihui.deng@longsys.com 2019/09/05
+***************************************************************************
+*/
+static void buttons_timer_function(unsigned long data)
+{
+    struct pin_desc * pindesc = irq_pd;
+    unsigned int pinval;
+
+    if (!pinval)
+        return;
+
+    /* 获取引脚值：参数为引脚号，返回引脚电压 */
+    pinval = s3c2410_gpio_getpin(pindesc->pin);
+
+    if (pinval)
+    {
+        /* 松开: 最后一个参数： 0-松开，1-按下 */
+        /**
+         * input_event() - report new input event
+         * @dev: device that generated the event
+         * @type: type of the event
+         * @code: event code
+         * @value: value of the event
+        */
+        input_event(buttons_dev, EV_KEY, pindesc->key_val, 0);
+        input_sync(buttons_dev);
+    }
+    else
+    {
+        /* 按下 */
+        input_event(buttons_dev, EV_KEY, pindesc->key_val, 1);
+        input_sync(buttons_dev);
+    }  
+}
 
 
 static int buttons_init(void)
@@ -39,12 +100,12 @@ static int buttons_init(void)
     /* 1. 分配一个input_dev结构体 */
     buttons_dev = input_allocate_device();
 
-    /* 2. 设置 */
+    /* 2. 初始化input_dev结构体 */
     /* 2.1 能产生哪类事件 */
-    set_bit(EV_KEY, buttons_dev->evbit);
-    set_bit(EV_REP, buttons_dev->evbit);
+    set_bit(EV_KEY, buttons_dev->evbit); // 按键类事件
+    set_bit(EV_REP, buttons_dev->evbit); // 自动重复类事件（按键需要重复扫描键盘判断按下）
 
-    /* 2.2 能产生这类操作里的那些事件：L S ENTER LEFTSHIT */
+    /* 2.2 能产生这类操作里的哪些事件：L S ENTER LEFTSHIT */
     set_bit(KEY_L, buttons_dev->keybit);
     set_bit(KEY_S, buttons_dev->keybit);
     set_bit(KEY_ENTER, buttons_dev->keybit);
@@ -54,7 +115,18 @@ static int buttons_init(void)
     input_register_device(buttons_dev);
     
     /* 4. 硬件相关操作 */
-    init_timer()
+    /* 4.1 定时器防抖动 */
+    init_timer(&buttons_timer);
+    buttons_timer.function = buttons_timer_function;
+    add_timer(&buttons_timer);  /* 启动定时器 */
+
+    /* 申请中断 */
+    for ( i = 0; i < 4; i++)
+    {
+        request_irq(pins_desc[i].irq, buttons_irq, IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING,\
+            pins_desc[i].name, &pins_desc[i])
+    }
+    
     return 0;
 }
 
